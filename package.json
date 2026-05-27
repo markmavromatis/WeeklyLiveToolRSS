@@ -1,0 +1,21 @@
+{
+  "name": "weekly-live-tool-v3",
+  "version": "3.0.0",
+  "description": "NTT Docomo Weekly Livestream News Tool",
+  "scripts": {
+    "install:all": "npm install && cd client && npm install",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "node server/index.js",
+    "client": "cd client && npm run dev"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "pptxgenjs": "^4.0.1",
+    "rss-parser": "^3.13.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
