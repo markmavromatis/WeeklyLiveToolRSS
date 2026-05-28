@@ -64,6 +64,7 @@ async function insertFromFeed(source) {
       ? (extractTechmemeSourceUrl(item.content) || item.link)
       : item.link;
     if (!url) continue;
+    if (url.includes("www.bloomberg.com/news/videos")) continue;
     const subjects = [].concat(item["dc:subject"] || []);
     if (subjects.includes("Coupons")) continue;
     const date = item.pubDate
