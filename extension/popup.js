@@ -33,6 +33,17 @@ function syncSettingsDisplay() {
   }
 }
 
+function syncActionButtons() {
+  const hasKey = !!settings.apiKey;
+  ['btn-add', 'btn-summarize'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled = !hasKey;
+    btn.title = hasKey ? '' : 'Anthropic API key required — click ⚙ to configure';
+  });
+  if (!hasKey) document.getElementById('settings-panel').hidden = false;
+}
+
 // ── UI wiring ─────────────────────────────────────────────────────────────────
 
 function wireUI() {
@@ -48,6 +59,7 @@ function wireUI() {
     await chrome.storage.local.set({ serverUrl: settings.serverUrl, apiKey: settings.apiKey });
     document.getElementById('settings-panel').hidden = true;
     syncSettingsDisplay();
+    syncActionButtons();
     toast('Settings saved');
   });
 
@@ -59,8 +71,7 @@ function wireUI() {
   });
 
   document.getElementById('btn-add').addEventListener('click', () => addArticle());
-  document.getElementById('btn-override').addEventListener('click', () => overrideArticle());
-  document.getElementById('btn-summary').addEventListener('click', () => generateSummary());
+  document.getElementById('btn-summarize').addEventListener('click', () => summarizeAndStar());
 }
 
 // ── Init: extract + check DB ──────────────────────────────────────────────────
@@ -95,7 +106,7 @@ async function init() {
     } else {
       setView('main', 'new');
     }
-    syncSummaryButton();
+    syncActionButtons();
   } catch (err) {
     const msg = err.message.includes('fetch')
       ? `Could not reach server at ${settings.serverUrl}. Make sure it's running — you may need to restart it.`
@@ -127,20 +138,6 @@ async function addArticle() {
 
     if (!res.ok) throw new Error(`Server error ${res.status}`);
     existingArticle = await res.json();
-
-    const editedHeadline = document.getElementById('inp-headline').value.trim();
-    if (editedHeadline && editedHeadline !== existingArticle.headline) {
-      await fetch(`${settings.serverUrl}/api/articles/${existingArticle.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ headline: editedHeadline, url: existingArticle.url, notes: existingArticle.notes || '' }),
-      });
-      existingArticle.headline = editedHeadline;
-    }
-
-    document.getElementById('done-msg').textContent = 'Article added!';
-    setView('main', 'done');
-    syncSummaryButton();
     added = true;
   } catch (err) {
     toast(err.message, 'error');
@@ -150,47 +147,16 @@ async function addArticle() {
 
   if (added) {
     if (settings.apiKey) {
-      await generateSummary();
+      await summarizeAndStar();
     } else {
+      document.getElementById('done-msg').textContent = 'Article added!';
+      setView('main', 'done');
       toast('Set your API key in settings to auto-generate summaries');
     }
   }
 }
 
-async function overrideArticle() {
-  setBusy(true);
-  let refreshed = false;
-  try {
-    const headline = document.getElementById('inp-headline').value.trim() || extractedData.headline;
-    const res = await fetch(`${settings.serverUrl}/api/articles/${existingArticle.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ headline, url: existingArticle.url, notes: existingArticle.notes || '' }),
-    });
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
-    existingArticle = await res.json();
-    existingArticle.summary = null;
-
-    document.getElementById('done-msg').textContent = 'Article refreshed!';
-    setView('main', 'done');
-    syncSummaryButton();
-    refreshed = true;
-  } catch (err) {
-    toast(err.message, 'error');
-  } finally {
-    setBusy(false);
-  }
-
-  if (refreshed) {
-    if (settings.apiKey) {
-      await generateSummary();
-    } else {
-      toast('Set your API key in settings to auto-generate summaries');
-    }
-  }
-}
-
-async function generateSummary() {
+async function summarizeAndStar() {
   if (!settings.apiKey) {
     toast('Add your Anthropic API key in settings first', 'error');
     document.getElementById('settings-panel').hidden = false;
@@ -200,25 +166,36 @@ async function generateSummary() {
 
   setBusy(true);
   try {
+    const headline = document.getElementById('inp-headline').value.trim() || extractedData.headline;
+    if (headline && headline !== existingArticle.headline) {
+      await fetch(`${settings.serverUrl}/api/articles/${existingArticle.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ headline, url: existingArticle.url, notes: existingArticle.notes || '' }),
+      });
+      existingArticle.headline = headline;
+    }
+
     const res = await fetch(`${settings.serverUrl}/api/articles/${existingArticle.id}/summary`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': settings.apiKey },
       body: JSON.stringify({ articleText: extractedData.text }),
     });
     if (!res.ok) throw new Error(`Server error ${res.status}`);
-
     existingArticle.summary = true;
-    toast('Summary generated!');
-    syncSummaryButton();
+
+    if (!existingArticle.is_starred) {
+      await fetch(`${settings.serverUrl}/api/articles/${existingArticle.id}/star`, { method: 'PUT' });
+      existingArticle.is_starred = true;
+    }
+
+    document.getElementById('done-msg').textContent = 'Summarized & starred!';
+    setView('main', 'done');
   } catch (err) {
     toast(err.message, 'error');
   } finally {
     setBusy(false);
   }
-}
-
-function syncSummaryButton() {
-  document.getElementById('btn-summary').hidden = !existingArticle || !!existingArticle.summary;
 }
 
 // ── View helpers ──────────────────────────────────────────────────────────────

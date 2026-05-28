@@ -41,6 +41,12 @@ Return ONLY a JSON array, one object per article, in this exact shape:
   }
 }
 
+function extractTechmemeSourceUrl(content) {
+  if (!content) return null;
+  const match = content.match(/href="(https?:\/\/[^"]+)"/i);
+  return match ? match[1] : null;
+}
+
 async function insertFromFeed(source) {
   const feed = await parser.parseURL(source.url);
   const insertArticle = db.prepare(`
@@ -54,17 +60,20 @@ async function insertFromFeed(source) {
 
   const newArticles = [];
   for (const item of feed.items || []) {
-    if (!item.link) continue;
+    const url = source.name === "Techmeme"
+      ? (extractTechmemeSourceUrl(item.content) || item.link)
+      : item.link;
+    if (!url) continue;
     const subjects = [].concat(item["dc:subject"] || []);
     if (subjects.includes("Coupons")) continue;
     const date = item.pubDate
       ? new Date(item.pubDate).toISOString().slice(0, 10)
       : new Date().toISOString().slice(0, 10);
-    const r = insertArticle.run(item.link, item.title || item.link, date, source.name, source.id);
+    const r = insertArticle.run(url, item.title || url, date, source.name, source.id);
     if (r.changes > 0) {
       newArticles.push({ id: r.lastInsertRowid, headline: item.title || item.link });
     } else if (claimFromTechmeme) {
-      claimFromTechmeme.run(source.name, source.id, item.link);
+      claimFromTechmeme.run(source.name, source.id, url);
     }
   }
 
