@@ -34,6 +34,8 @@ export const deleteArticle = (id) =>
   fetch(`/api/articles/${id}`, { method: "DELETE" }).then((r) => r.json());
 export const markArticleRead = (id) =>
   fetch(`/api/articles/${id}/read`, { method: "PUT" }).then((r) => r.json());
+export const toggleArticleStar = (id) =>
+  fetch(`/api/articles/${id}/star`, { method: "PUT" }).then((r) => r.json());
 export const setHeadlineJp = (id, headline_jp) =>
   fetch(`/api/articles/${id}/headline-jp`, { method: "PUT", ...json({ headline_jp }) }).then((r) => r.json());
 export const setTags = (id, tags) =>

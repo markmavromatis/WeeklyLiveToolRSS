@@ -276,6 +276,14 @@ app.post("/api/articles/:id/score", async (req, res) => {
   }
 });
 
+app.put("/api/articles/:id/star", (req, res) => {
+  const id = parseInt(req.params.id);
+  const article = db.prepare("SELECT is_starred FROM articles WHERE id = ?").get(id);
+  if (!article) return res.status(404).json({ error: "Not found" });
+  db.prepare("UPDATE articles SET is_starred = ? WHERE id = ?").run(article.is_starred ? 0 : 1, id);
+  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+});
+
 app.put("/api/articles/:id/read", (req, res) => {
   const id = parseInt(req.params.id);
   db.prepare("UPDATE articles SET is_read = 1 WHERE id = ?").run(id);
@@ -384,7 +392,7 @@ app.post("/api/sessions/:id/export-pptx", async (req, res) => {
 
   try {
     const sessionArticles = db.prepare(
-      "SELECT * FROM articles WHERE session_id = ? ORDER BY article_date DESC, headline ASC"
+      "SELECT * FROM articles WHERE session_id = ? AND is_starred = 1 ORDER BY article_date DESC, headline ASC"
     ).all(sessionId);
 
     const headlineMap = Object.fromEntries(sessionArticles.map((a) => [a.id, a.headline_jp || ""]));

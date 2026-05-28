@@ -132,6 +132,14 @@ body {
 .article-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
 .article-row.is-read { background: #f0fdf4; border-color: #86efac; border-left: 4px solid #22c55e; }
 .article-headline.read { color: #64748b; }
+.star-btn {
+  background: none; border: 1px solid #e2e8f0; color: #94a3b8;
+  font-size: 16px; padding: 2px 7px; line-height: 1; cursor: pointer;
+  border-radius: 6px; transition: color 0.1s, border-color 0.1s;
+}
+.star-btn:hover { color: #f59e0b; border-color: #f59e0b; }
+.star-btn.starred { color: #f59e0b; border-color: #fcd34d; background: #fffbeb; }
+
 .read-chip {
   display: inline-block;
   background: #dcfce7; color: #15803d;

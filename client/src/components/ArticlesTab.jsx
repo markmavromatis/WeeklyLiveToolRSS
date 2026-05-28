@@ -3,6 +3,7 @@ import {
   getArticles, createArticle, deleteArticle, assignArticle, unassignArticle,
   generateSummary, clearSummary, scoreArticle, scoreUnscored, setTags, translateHeadlines, exportToSlack,
   markArticleRead,
+  toggleArticleStar,
 } from "../api";
 
 const PRESET_TAGS = ["AdTech","AI","Electrification","Enterprise","Mobility","Robotics","SaaS","Semiconductors","Social Media","Streaming","Sustainability","Telecom"];
@@ -166,6 +167,13 @@ function ArticleRow({ article, sessions, apiKey, onUpdate, onDelete, showJapanes
         </div>
 
         <div className="article-actions">
+          <button
+            className={`btn btn-sm star-btn${article.is_starred ? " starred" : ""}`}
+            title={article.is_starred ? "Unstar" : "Star"}
+            onClick={() => toggleArticleStar(article.id).then(onUpdate)}
+          >
+            {article.is_starred ? "★" : "☆"}
+          </button>
           <select
             className="form-select"
             style={{ fontSize: 12, padding: "4px 8px" }}
@@ -263,6 +271,7 @@ function SlackExportModal({ articles, onClose, slackWebhookUrl, onNeedWebhook, o
 
   const matchingArticles = articles
     .filter((a) => {
+      if (!a.is_starred) return false;
       if (!a.created_at) return false;
       const d = a.created_at.slice(0, 10);
       return d >= fromDate && d <= toDate;
@@ -330,7 +339,7 @@ function SlackExportModal({ articles, onClose, slackWebhookUrl, onNeedWebhook, o
           </div>
         </div>
         <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>
-          {matchingArticles.length} article{matchingArticles.length !== 1 ? "s" : ""} selected
+          {matchingArticles.length} starred article{matchingArticles.length !== 1 ? "s" : ""} in range
           {noSummary > 0 && <span style={{ color: "#f59e0b", marginLeft: 8 }}>{noSummary} without summary</span>}
         </div>
         <div className="modal-footer">
