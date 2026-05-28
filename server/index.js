@@ -276,6 +276,12 @@ app.post("/api/articles/:id/score", async (req, res) => {
   }
 });
 
+app.put("/api/articles/:id/read", (req, res) => {
+  const id = parseInt(req.params.id);
+  db.prepare("UPDATE articles SET is_read = 1 WHERE id = ?").run(id);
+  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+});
+
 app.post("/api/articles/score-unscored", async (req, res) => {
   try {
     const apiKey = req.headers["x-api-key"];

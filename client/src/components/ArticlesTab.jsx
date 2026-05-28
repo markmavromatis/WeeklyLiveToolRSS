@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   getArticles, createArticle, deleteArticle, assignArticle, unassignArticle,
   generateSummary, clearSummary, scoreArticle, scoreUnscored, setTags, translateHeadlines, exportToSlack,
+  markArticleRead,
 } from "../api";
 
 const PRESET_TAGS = ["AdTech","AI","Electrification","Enterprise","Mobility","Robotics","SaaS","Semiconductors","Social Media","Streaming","Sustainability","Telecom"];
@@ -122,7 +123,7 @@ function ArticleRow({ article, sessions, apiKey, onUpdate, onDelete, showJapanes
   })();
 
   return (
-    <div className="article-row">
+    <div className={`article-row${article.is_read ? " is-read" : ""}`}>
       <div className="article-main">
         <div style={{ paddingTop: 2 }}>
           <ScoreBadge score={article.relevance_score} />
@@ -135,13 +136,20 @@ function ArticleRow({ article, sessions, apiKey, onUpdate, onDelete, showJapanes
         </div>
 
         <div className="article-meta">
-          <a className="article-headline" href={article.url} target="_blank" rel="noreferrer">
+          <a
+            className={`article-headline${article.is_read ? " read" : ""}`}
+            href={article.url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => { if (!article.is_read) markArticleRead(article.id).then(onUpdate); }}
+          >
             {showJapanese && article.headline_jp ? article.headline_jp : (article.headline || article.url)}
           </a>
           {showJapanese && article.headline_jp && article.headline && (
             <span style={{ fontSize: 12, color: "#94a3b8" }}>{article.headline}</span>
           )}
           <div className="article-info">
+            {article.is_read && <span className="read-chip">Read</span>}
             {currentSession && (
               <span style={{ color: "#6366f1", fontSize: 12 }}>Session #{currentSession.session_index}</span>
             )}

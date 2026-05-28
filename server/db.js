@@ -62,4 +62,6 @@ if (sourceCount === 0) {
   ].forEach(([name, url]) => insert.run(name, url));
 }
 
+try { db.exec("ALTER TABLE articles ADD COLUMN is_read INTEGER DEFAULT 0"); } catch {}
+
 module.exports = db;
