@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   getArticles, createArticle, deleteArticle, assignArticle, unassignArticle,
-  generateSummary, clearSummary, scoreArticle, scoreUnscored, setTags, translateHeadlines,
+  generateSummary, clearSummary, scoreArticle, scoreUnscored, setTags, translateHeadlines, exportToSlack,
 } from "../api";
 
 const PRESET_TAGS = ["AdTech","AI","Electrification","Enterprise","Mobility","Robotics","SaaS","Semiconductors","Social Media","Streaming","Sustainability","Telecom"];
@@ -209,6 +209,137 @@ function ArticleRow({ article, sessions, apiKey, onUpdate, onDelete, showJapanes
   );
 }
 
+function SlackWebhookModal({ current, onClose, onSave }) {
+  const [url, setUrl] = useState(current || "");
+  useEffect(() => {
+    const h = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 480 }}>
+        <div className="modal-title">Slack Webhook URL</div>
+        <p style={{ fontSize: 13, color: "#64748b", marginBottom: 18, lineHeight: 1.6 }}>
+          Paste a Slack Incoming Webhook URL to enable sharing articles to a channel.
+          Stored in your browser's localStorage only.
+        </p>
+        <div className="form-group">
+          <label className="form-label">Webhook URL</label>
+          <input
+            className="form-input"
+            style={{ width: "100%" }}
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://hooks.slack.com/services/..."
+            autoFocus
+          />
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => { if (url.trim()) onSave(url.trim()); }} disabled={!url.trim()}>
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SlackExportModal({ articles, onClose, slackWebhookUrl, onNeedWebhook, onFlash }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [fromDate, setFromDate] = useState(today);
+  const [toDate, setToDate] = useState(today);
+  const [posting, setPosting] = useState(false);
+
+  const matchingArticles = articles
+    .filter((a) => {
+      if (!a.created_at) return false;
+      const d = a.created_at.slice(0, 10);
+      return d >= fromDate && d <= toDate;
+    })
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+
+  const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+  const handleExport = async () => {
+    if (!slackWebhookUrl) { onClose(); onNeedWebhook(); return; }
+
+    const groups = {};
+    for (const a of matchingArticles) {
+      const d = a.created_at.slice(0, 10);
+      if (!groups[d]) groups[d] = [];
+      groups[d].push(a);
+    }
+
+    const messages = Object.entries(groups)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flatMap(([date, arts]) => [
+        `*${fmtDate(date)}*`,
+        ...arts.map((a) => {
+          const lines = [`*${a.headline}* — <${a.url}|Link>`];
+          if (a.summary) {
+            try { JSON.parse(a.summary).forEach((b) => lines.push(`• ${b}`)); } catch {}
+          }
+          return lines.join("\n");
+        }),
+      ]);
+
+    setPosting(true);
+    try {
+      const result = await exportToSlack({ webhookUrl: slackWebhookUrl, messages });
+      if (result.error) throw new Error(result.error);
+      onFlash(`Posted ${messages.length} message${messages.length !== 1 ? "s" : ""} to Slack.`);
+      onClose();
+    } catch (err) {
+      onFlash("Slack export failed: " + err.message, "error");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const noSummary = matchingArticles.filter((a) => !a.summary).length;
+
+  useEffect(() => {
+    const h = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 420 }}>
+        <div className="modal-title">Export to Slack</div>
+        <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
+          <div className="form-group" style={{ flex: 1 }}>
+            <label className="form-label">From</label>
+            <input className="form-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          </div>
+          <div className="form-group" style={{ flex: 1 }}>
+            <label className="form-label">To</label>
+            <input className="form-input" type="date" value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} />
+          </div>
+        </div>
+        <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>
+          {matchingArticles.length} article{matchingArticles.length !== 1 ? "s" : ""} selected
+          {noSummary > 0 && <span style={{ color: "#f59e0b", marginLeft: 8 }}>{noSummary} without summary</span>}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose} disabled={posting}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            disabled={matchingArticles.length === 0 || posting}
+            onClick={handleExport}
+          >
+            {posting ? <><span className="spinner" /> Posting…</> : "Post to Slack"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AddArticleForm({ apiKey, onAdded }) {
   const [url, setUrl] = useState("");
   const [notes, setNotes] = useState("");
@@ -281,6 +412,16 @@ export default function ArticlesTab({ apiKey, sessions }) {
   const [msg, setMsg] = useState(null);
   const [showJapanese, setShowJapanese] = useState(false);
   const [translating, setTranslating] = useState(false);
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState(() => localStorage.getItem("wlt_slack_webhook") || "");
+  const [showSlackExport, setShowSlackExport] = useState(false);
+  const [showSlackWebhook, setShowSlackWebhook] = useState(false);
+
+  const saveSlackWebhook = (url) => {
+    localStorage.setItem("wlt_slack_webhook", url);
+    setSlackWebhookUrl(url);
+    setShowSlackWebhook(false);
+    flash("Slack webhook saved.");
+  };
 
   const flash = (text, type = "success") => { setMsg({ text, type }); setTimeout(() => setMsg(null), 5000); };
 
@@ -358,6 +499,21 @@ export default function ArticlesTab({ apiKey, sessions }) {
 
   return (
     <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 8 }}>
+        <button
+          className={`btn btn-secondary btn-sm`}
+          style={{ fontSize: 12 }}
+          onClick={() => setShowSlackWebhook(true)}
+          title={slackWebhookUrl ? "Slack webhook configured — click to update" : "Configure Slack webhook"}
+        >
+          <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: slackWebhookUrl ? "#22c55e" : "#f59e0b", marginRight: 5, verticalAlign: "middle" }} />
+          {slackWebhookUrl ? "Slack" : "Set Slack Webhook"}
+        </button>
+        <button className="btn btn-secondary btn-sm" style={{ fontSize: 12 }} onClick={() => setShowSlackExport(true)}>
+          Export to Slack
+        </button>
+      </div>
+
       <AddArticleForm apiKey={apiKey} onAdded={handleAdded} />
 
       <div className="filter-bar">
@@ -454,6 +610,23 @@ export default function ArticlesTab({ apiKey, sessions }) {
           <span style={{ fontSize: 13, color: "#64748b" }}>Page {page} of {totalPages}</span>
           <button className="btn btn-secondary btn-sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>→</button>
         </div>
+      )}
+
+      {showSlackExport && (
+        <SlackExportModal
+          articles={articles}
+          onClose={() => setShowSlackExport(false)}
+          slackWebhookUrl={slackWebhookUrl}
+          onNeedWebhook={() => setShowSlackWebhook(true)}
+          onFlash={flash}
+        />
+      )}
+      {showSlackWebhook && (
+        <SlackWebhookModal
+          current={slackWebhookUrl}
+          onClose={() => setShowSlackWebhook(false)}
+          onSave={saveSlackWebhook}
+        />
       )}
     </div>
   );

@@ -504,4 +504,53 @@ app.post("/api/rss/fetch", async (req, res) => {
   }
 });
 
+// POST export articles to Slack as sequential messages
+app.post("/api/slack/export", async (req, res) => {
+  const { webhookUrl, messages } = req.body;
+  if (!webhookUrl) return res.status(400).json({ error: "webhookUrl is required" });
+  if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json({ error: "messages array is required" });
+
+  let parsed;
+  try {
+    parsed = new URL(webhookUrl);
+  } catch {
+    return res.status(400).json({ error: "Invalid webhook URL — paste just the https://hooks.slack.com/... URL." });
+  }
+
+  const lib = parsed.protocol === "https:" ? https : http;
+
+  function postMessage(text) {
+    return new Promise((resolve, reject) => {
+      const payload = JSON.stringify({ text });
+      const options = {
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
+      };
+      const slackReq = lib.request(options, (proxyRes) => {
+        let data = "";
+        proxyRes.on("data", (chunk) => { data += chunk; });
+        proxyRes.on("end", () => {
+          if (proxyRes.statusCode === 200) resolve();
+          else reject(new Error(`Slack returned ${proxyRes.statusCode}: ${data}`));
+        });
+      });
+      slackReq.on("error", reject);
+      slackReq.write(payload);
+      slackReq.end();
+    });
+  }
+
+  try {
+    for (let i = 0; i < messages.length; i++) {
+      await postMessage(messages[i]);
+      if (i < messages.length - 1) await new Promise((r) => setTimeout(r, 1000));
+    }
+    res.json({ ok: true, sent: messages.length });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`✓ WeeklyLiveTool V3 → http://localhost:${PORT}`));

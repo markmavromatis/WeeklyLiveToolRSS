@@ -65,6 +65,10 @@ export const exportPptx = (sessionId, apiKey) =>
     headers: { "x-api-key": apiKey },
   });
 
+// Slack
+export const exportToSlack = (data) =>
+  fetch("/api/slack/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then((r) => r.json());
+
 // RSS
 export const getRssSources = () => base("/api/rss/sources");
 export const createRssSource = (data) =>
