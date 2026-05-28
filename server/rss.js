@@ -5,6 +5,7 @@ const db = require("./db");
 const parser = new Parser({
   timeout: 20000,
   headers: { "User-Agent": "Mozilla/5.0 (compatible; WeeklyLiveTool/3.0)" },
+  customFields: { item: ["dc:subject"] },
 });
 
 const BATCH_SIZE = 50;
@@ -46,16 +47,24 @@ async function insertFromFeed(source) {
     INSERT OR IGNORE INTO articles (url, headline, article_date, source, rss_source_id)
     VALUES (?, ?, ?, ?, ?)
   `);
+  // When a primary source sees a URL already attributed to Techmeme, re-attribute it.
+  const claimFromTechmeme = source.name !== "Techmeme"
+    ? db.prepare("UPDATE articles SET source = ?, rss_source_id = ? WHERE url = ? AND source = 'Techmeme'")
+    : null;
 
   const newArticles = [];
   for (const item of feed.items || []) {
     if (!item.link) continue;
+    const subjects = [].concat(item["dc:subject"] || []);
+    if (subjects.includes("Coupons")) continue;
     const date = item.pubDate
       ? new Date(item.pubDate).toISOString().slice(0, 10)
       : new Date().toISOString().slice(0, 10);
     const r = insertArticle.run(item.link, item.title || item.link, date, source.name, source.id);
     if (r.changes > 0) {
       newArticles.push({ id: r.lastInsertRowid, headline: item.title || item.link });
+    } else if (claimFromTechmeme) {
+      claimFromTechmeme.run(source.name, source.id, item.link);
     }
   }
 

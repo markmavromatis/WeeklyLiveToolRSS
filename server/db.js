@@ -57,6 +57,8 @@ if (sourceCount === 0) {
     ["Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"],
     ["Wired", "https://www.wired.com/feed/rss"],
     ["Electrek", "https://electrek.co/feed/"],
+    ["Techmeme", "https://www.techmeme.com/feed.xml"],
+    ["TechCrunch", "https://techcrunch.com/feed/"],
   ].forEach(([name, url]) => insert.run(name, url));
 }
 
