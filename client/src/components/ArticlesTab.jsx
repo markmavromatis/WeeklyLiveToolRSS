@@ -421,6 +421,7 @@ export default function ArticlesTab({ apiKey, sessions }) {
   const [showJapanese, setShowJapanese] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [search, setSearch] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
   const [slackWebhookUrl, setSlackWebhookUrl] = useState(() => localStorage.getItem("wlt_slack_webhook") || "");
   const [showSlackExport, setShowSlackExport] = useState(false);
   const [showSlackWebhook, setShowSlackWebhook] = useState(false);
@@ -520,22 +521,27 @@ export default function ArticlesTab({ apiKey, sessions }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 8 }}>
-        <button
-          className={`btn btn-secondary btn-sm`}
-          style={{ fontSize: 12 }}
-          onClick={() => setShowSlackWebhook(true)}
-          title={slackWebhookUrl ? "Slack webhook configured — click to update" : "Configure Slack webhook"}
-        >
-          <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: slackWebhookUrl ? "#22c55e" : "#f59e0b", marginRight: 5, verticalAlign: "middle" }} />
-          {slackWebhookUrl ? "Slack" : "Set Slack Webhook"}
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, gap: 8 }}>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAddForm((v) => !v)}>
+          {showAddForm ? "Cancel" : "+ Add Article"}
         </button>
-        <button className="btn btn-secondary btn-sm" style={{ fontSize: 12 }} onClick={() => setShowSlackExport(true)}>
-          Export to Slack
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            style={{ fontSize: 12 }}
+            onClick={() => setShowSlackWebhook(true)}
+            title={slackWebhookUrl ? "Slack webhook configured — click to update" : "Configure Slack webhook"}
+          >
+            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: slackWebhookUrl ? "#22c55e" : "#f59e0b", marginRight: 5, verticalAlign: "middle" }} />
+            {slackWebhookUrl ? "Slack" : "Set Slack Webhook"}
+          </button>
+          <button className="btn btn-secondary btn-sm" style={{ fontSize: 12 }} onClick={() => setShowSlackExport(true)}>
+            Export to Slack
+          </button>
+        </div>
       </div>
 
-      <AddArticleForm apiKey={apiKey} onAdded={handleAdded} />
+      {showAddForm && <AddArticleForm apiKey={apiKey} onAdded={(article) => { handleAdded(article); setShowAddForm(false); }} />}
 
       <div className="filter-bar">
         <div className="form-group" style={{ flex: 2, minWidth: 200 }}>
