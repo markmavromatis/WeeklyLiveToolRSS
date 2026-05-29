@@ -6,10 +6,10 @@ import ApiKeyModal from "./components/ApiKeyModal";
 import ThursdayPrompt, { shouldShowThursdayPrompt, markThursdayPromptSeen } from "./components/ThursdayPrompt";
 import { getSessions, setAuthErrorHandler } from "./api";
 
-const TABS = ["Sessions", "Articles", "RSS Feeds"];
+const TABS = ["Articles", "Sessions", "RSS Feeds"];
 
 export default function App() {
-  const [tab, setTab] = useState("Sessions");
+  const [tab, setTab] = useState("Articles");
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("anthropic_api_key") || "");
   const [showKeyModal, setShowKeyModal] = useState(!localStorage.getItem("anthropic_api_key"));
   const [showThursdayPrompt, setShowThursdayPrompt] = useState(false);
