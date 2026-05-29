@@ -420,6 +420,7 @@ export default function ArticlesTab({ apiKey, sessions }) {
   const [msg, setMsg] = useState(null);
   const [showJapanese, setShowJapanese] = useState(false);
   const [translating, setTranslating] = useState(false);
+  const [search, setSearch] = useState("");
   const [slackWebhookUrl, setSlackWebhookUrl] = useState(() => localStorage.getItem("wlt_slack_webhook") || "");
   const [showSlackExport, setShowSlackExport] = useState(false);
   const [showSlackWebhook, setShowSlackWebhook] = useState(false);
@@ -510,8 +511,11 @@ export default function ArticlesTab({ apiKey, sessions }) {
   };
 
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
-  const paged = articles.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const totalPages = Math.ceil(articles.length / PAGE_SIZE);
+  const filtered = search
+    ? articles.filter((a) => (a.headline || a.url).toLowerCase().includes(search.toLowerCase()))
+    : articles;
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const unscoredCount = articles.filter((a) => a.relevance_score == null).length;
 
   return (
@@ -534,6 +538,16 @@ export default function ArticlesTab({ apiKey, sessions }) {
       <AddArticleForm apiKey={apiKey} onAdded={handleAdded} />
 
       <div className="filter-bar">
+        <div className="form-group" style={{ flex: 2, minWidth: 200 }}>
+          <label className="form-label">Search</label>
+          <input
+            className="form-input"
+            style={{ width: "100%" }}
+            placeholder="Filter by headline…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+        </div>
         <div className="form-group">
           <label className="form-label">Session</label>
           <select className="form-select" value={filters.session_id} onChange={(e) => setFilter("session_id", e.target.value)}>
@@ -594,7 +608,7 @@ export default function ArticlesTab({ apiKey, sessions }) {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span style={{ fontSize: 13, color: "#64748b" }}>
-          {articles.length} articles {filters.session_id || filters.source || filters.min_score ? "(filtered)" : ""}
+          {filtered.length}{filtered.length !== articles.length ? ` of ${articles.length}` : ""} articles{filters.session_id || filters.source || filters.min_score || search ? " (filtered)" : ""}
         </span>
         {unscoredCount > 0 && (
           <span style={{ fontSize: 12, color: "#94a3b8" }}>{unscoredCount} unscored</span>
@@ -603,9 +617,9 @@ export default function ArticlesTab({ apiKey, sessions }) {
 
       {loading && <div className="empty-state"><span className="spinner" /></div>}
 
-      {!loading && articles.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <div className="empty-state">
-          No articles found. Fetch RSS feeds or add articles by URL.
+          {search ? "No articles match your search." : "No articles found. Fetch RSS feeds or add articles by URL."}
         </div>
       )}
 
