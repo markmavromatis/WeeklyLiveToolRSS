@@ -150,7 +150,7 @@ function ArticleRow({ article, sessions, apiKey, onUpdate, onDelete, showJapanes
             <span style={{ fontSize: 12, color: "#94a3b8" }}>{article.headline}</span>
           )}
           <div className="article-info">
-            {article.is_read && <span className="read-chip">Read</span>}
+            {!!article.is_read && <span className="read-chip">Read</span>}
             {currentSession && (
               <span style={{ color: "#6366f1", fontSize: 12 }}>Session #{currentSession.session_index}</span>
             )}
@@ -167,32 +167,11 @@ function ArticleRow({ article, sessions, apiKey, onUpdate, onDelete, showJapanes
         </div>
 
         <div className="article-actions">
-          <button
-            className={`btn btn-sm star-btn${article.is_starred ? " starred" : ""}`}
-            title={article.is_starred ? "Unstar" : "Star"}
-            onClick={() => toggleArticleStar(article.id).then(onUpdate)}
-          >
-            {article.is_starred ? "★" : "☆"}
-          </button>
-          <select
-            className="form-select"
-            style={{ fontSize: 12, padding: "4px 8px" }}
-            value={article.session_id || ""}
-            onChange={handleAssign}
-          >
-            <option value="">Unassigned</option>
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>#{s.session_index} ({s.to_date})</option>
-            ))}
-          </select>
-
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={handleSummary}
-            disabled={summaryLoading}
-          >
-            {summaryLoading ? <span className="spinner" /> : (summary ? (expanded ? "Hide" : "Summary") : "Summarize")}
-          </button>
+          {summary && (
+            <button className="btn btn-secondary btn-sm" onClick={handleSummary}>
+              {expanded ? "Hide" : "Summary"}
+            </button>
+          )}
 
           {article.relevance_score == null && (
             <button className="btn btn-warning btn-sm" onClick={handleScore} disabled={scoreLoading}>
@@ -200,7 +179,19 @@ function ArticleRow({ article, sessions, apiKey, onUpdate, onDelete, showJapanes
             </button>
           )}
 
-          <button className="btn btn-danger btn-sm" onClick={() => onDelete(article.id)}>×</button>
+          <button
+            className={`btn btn-sm star-btn${article.is_starred ? " starred" : ""}`}
+            title={article.is_starred ? "Unstar" : "Star"}
+            onClick={() => toggleArticleStar(article.id).then(onUpdate)}
+          >
+            {article.is_starred ? "★" : "☆"}
+          </button>
+          <button className="btn btn-danger btn-sm" onClick={() => onDelete(article.id)} title="Delete article">
+            <svg width="12" height="13" viewBox="0 0 12 13" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
+              <path d="M1 3h10M4.5 3V2a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1M2 3l.75 7.5a.5.5 0 00.5.5h5.5a.5.5 0 00.5-.5L10 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M5 5.5v4M7 5.5v4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+          </button>
         </div>
       </div>
 
