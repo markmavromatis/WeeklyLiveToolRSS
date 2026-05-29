@@ -462,6 +462,15 @@ export default function ArticlesTab({ apiKey, sessions }) {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    const es = new EventSource("/api/events");
+    es.addEventListener("article-updated", (e) => {
+      const updated = JSON.parse(e.data);
+      setArticles((prev) => prev.map((a) => a.id === updated.id ? updated : a));
+    });
+    return () => es.close();
+  }, []);
+
   const handleUpdate = (updated) => {
     setArticles((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
   };

@@ -122,6 +122,29 @@ function parseArticle(a) {
   };
 }
 
+// ── Server-Sent Events ────────────────────────────────────────────────────────
+const sseClients = new Set();
+
+function broadcast(event, data) {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const client of sseClients) client.write(msg);
+}
+
+function respondWithArticle(res, id, status = 200) {
+  const article = parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id));
+  broadcast("article-updated", article);
+  res.status(status).json(article);
+}
+
+app.get("/api/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  sseClients.add(res);
+  req.on("close", () => sseClients.delete(res));
+});
+
 // ── Articles ──────────────────────────────────────────────────────────────────
 
 app.get("/api/articles", (req, res) => {
@@ -169,7 +192,7 @@ app.post("/api/articles", async (req, res) => {
     } catch {}
   }
 
-  res.status(201).json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(r.lastInsertRowid)));
+  respondWithArticle(res, r.lastInsertRowid, 201);
 });
 
 app.put("/api/articles/:id", (req, res) => {
@@ -177,14 +200,14 @@ app.put("/api/articles/:id", (req, res) => {
   const { url, headline, notes } = req.body;
   if (!db.prepare("SELECT id FROM articles WHERE id = ?").get(id)) return res.status(404).json({ error: "Not found" });
   db.prepare("UPDATE articles SET url = ?, headline = ?, notes = ? WHERE id = ?").run(url, headline, notes || "", id);
-  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+  respondWithArticle(res, id);
 });
 
 app.put("/api/articles/:id/headline-jp", (req, res) => {
   const id = parseInt(req.params.id);
   if (!db.prepare("SELECT id FROM articles WHERE id = ?").get(id)) return res.status(404).json({ error: "Not found" });
   db.prepare("UPDATE articles SET headline_jp = ? WHERE id = ?").run(req.body.headline_jp || "", id);
-  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+  respondWithArticle(res, id);
 });
 
 app.put("/api/articles/:id/tags", (req, res) => {
@@ -192,7 +215,7 @@ app.put("/api/articles/:id/tags", (req, res) => {
   const { tags } = req.body;
   if (!db.prepare("SELECT id FROM articles WHERE id = ?").get(id)) return res.status(404).json({ error: "Not found" });
   db.prepare("UPDATE articles SET tags = ? WHERE id = ?").run(JSON.stringify(Array.isArray(tags) ? tags : []), id);
-  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+  respondWithArticle(res, id);
 });
 
 app.delete("/api/articles/:id", (req, res) => {
@@ -246,7 +269,7 @@ Rules for TAGS: 1-3 from this preset list (or a short custom tag): ${PRESET_TAGS
 
     db.prepare("UPDATE articles SET summary = ?, tags = ? WHERE id = ?")
       .run(JSON.stringify(bullets.length ? bullets : [text]), JSON.stringify(tags), id);
-    res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+    respondWithArticle(res, id);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -255,7 +278,7 @@ Rules for TAGS: 1-3 from this preset list (or a short custom tag): ${PRESET_TAGS
 app.delete("/api/articles/:id/summary", (req, res) => {
   const id = parseInt(req.params.id);
   db.prepare("UPDATE articles SET summary = NULL WHERE id = ?").run(id);
-  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+  respondWithArticle(res, id);
 });
 
 app.post("/api/articles/:id/score", async (req, res) => {
@@ -270,7 +293,7 @@ app.post("/api/articles/:id/score", async (req, res) => {
       db.prepare("UPDATE articles SET relevance_score = ?, relevance_breakdown = ?, relevance_reason = ? WHERE id = ?")
         .run(scores[0].score, JSON.stringify(scores[0].breakdown), scores[0].reason, id);
     }
-    res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+    respondWithArticle(res, id);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -281,13 +304,13 @@ app.put("/api/articles/:id/star", (req, res) => {
   const article = db.prepare("SELECT is_starred FROM articles WHERE id = ?").get(id);
   if (!article) return res.status(404).json({ error: "Not found" });
   db.prepare("UPDATE articles SET is_starred = ? WHERE id = ?").run(article.is_starred ? 0 : 1, id);
-  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+  respondWithArticle(res, id);
 });
 
 app.put("/api/articles/:id/read", (req, res) => {
   const id = parseInt(req.params.id);
   db.prepare("UPDATE articles SET is_read = 1 WHERE id = ?").run(id);
-  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+  respondWithArticle(res, id);
 });
 
 app.post("/api/articles/score-unscored", async (req, res) => {
@@ -374,13 +397,13 @@ app.put("/api/sessions/:sessionId/articles/:articleId", (req, res) => {
   if (!db.prepare("SELECT id FROM articles WHERE id = ?").get(articleId))
     return res.status(404).json({ error: "Article not found" });
   db.prepare("UPDATE articles SET session_id = ? WHERE id = ?").run(sessionId, articleId);
-  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(articleId)));
+  respondWithArticle(res, articleId);
 });
 
 app.delete("/api/sessions/:sessionId/articles/:articleId", (req, res) => {
   const articleId = parseInt(req.params.articleId);
   db.prepare("UPDATE articles SET session_id = NULL WHERE id = ?").run(articleId);
-  res.json(parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(articleId)));
+  respondWithArticle(res, articleId);
 });
 
 app.post("/api/sessions/:id/export-pptx", async (req, res) => {
