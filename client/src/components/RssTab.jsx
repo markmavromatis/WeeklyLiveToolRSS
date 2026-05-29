@@ -34,7 +34,8 @@ function FetchSessionModal({ sessions, onConfirm, onClose }) {
   const newIndex = maxIndex + 1;
   const newFrom = getMondayOfWeek(nextFriday);
 
-  const defaultSelected = nextFridaySession ? String(nextFridaySession.id) : CREATE_NEW;
+  const lastSession = sessions.length > 0 ? sessions.reduce((a, b) => a.session_index > b.session_index ? a : b) : null;
+  const defaultSelected = lastSession ? String(lastSession.id) : CREATE_NEW;
   const [selected, setSelected] = useState(defaultSelected);
 
   const isNew = selected === CREATE_NEW;
