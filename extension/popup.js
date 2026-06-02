@@ -35,13 +35,11 @@ function syncSettingsDisplay() {
 
 function syncActionButtons() {
   const hasKey = !!settings.apiKey;
-  ['btn-add', 'btn-summarize'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.disabled = !hasKey;
-    btn.title = hasKey ? '' : 'Anthropic API key required — click ⚙ to configure';
-  });
-  if (!hasKey) document.getElementById('settings-panel').hidden = false;
+  const summarizeBtn = document.getElementById('btn-summarize');
+  if (summarizeBtn) {
+    summarizeBtn.disabled = !hasKey;
+    summarizeBtn.title = hasKey ? '' : 'Anthropic API key required — click ⚙ to configure';
+  }
 }
 
 // ── UI wiring ─────────────────────────────────────────────────────────────────
@@ -121,10 +119,15 @@ async function addArticle() {
   setBusy(true);
   let added = false;
   try {
+    const headline = document.getElementById('inp-headline').value.trim() || extractedData.headline;
     const res = await fetch(`${settings.serverUrl}/api/articles`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': settings.apiKey },
-      body: JSON.stringify({ url: extractedData.url }),
+      body: JSON.stringify({
+        url: extractedData.url,
+        headline: headline || undefined,
+        article_date: extractedData.publishedDate ? extractedData.publishedDate.slice(0, 10) : undefined,
+      }),
     });
 
     if (res.status === 409) {
@@ -151,7 +154,6 @@ async function addArticle() {
     } else {
       document.getElementById('done-msg').textContent = 'Article added!';
       setView('main', 'done');
-      toast('Set your API key in settings to auto-generate summaries');
     }
   }
 }
@@ -181,7 +183,10 @@ async function summarizeAndStar() {
       headers: { 'Content-Type': 'application/json', 'x-api-key': settings.apiKey },
       body: JSON.stringify({ articleText: extractedData.text }),
     });
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Server error ${res.status}`);
+    }
     existingArticle.summary = true;
 
     if (!existingArticle.is_starred) {

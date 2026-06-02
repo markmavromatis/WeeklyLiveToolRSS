@@ -12,7 +12,9 @@ const PORT = 3002;
 
 app.use(cors({
   origin: (origin, cb) => {
-    const ok = !origin || /^http:\/\/localhost:(3000|5173)$/.test(origin);
+    const ok = !origin
+      || /^http:\/\/localhost:(3000|5173)$/.test(origin)
+      || /^chrome-extension:\/\//.test(origin);
     cb(null, ok ? true : false);
   },
 }));
@@ -160,39 +162,46 @@ app.get("/api/articles", (req, res) => {
 });
 
 app.post("/api/articles", async (req, res) => {
-  const { url, notes } = req.body;
+  const { url, notes, headline: providedHeadline, article_date: providedDate } = req.body;
   if (!url) return res.status(400).json({ error: "url is required" });
 
   const existing = db.prepare("SELECT * FROM articles WHERE url = ?").get(url);
   if (existing) return res.status(409).json({ error: "duplicate", article: parseArticle(existing) });
 
-  let headline = url;
-  let article_date = new Date().toISOString().slice(0, 10);
-  try {
-    const html = await fetchUrl(url);
-    const meta = extractMeta(html);
-    if (meta.headline) headline = meta.headline;
-    article_date = meta.article_date;
-  } catch (e) {
-    console.warn("Meta fetch failed:", e.message);
+  let headline = providedHeadline || url;
+  let article_date = providedDate || new Date().toISOString().slice(0, 10);
+  if (!providedHeadline) {
+    try {
+      const html = await fetchUrl(url);
+      const meta = extractMeta(html);
+      if (meta.headline) headline = meta.headline;
+      article_date = meta.article_date;
+    } catch (e) {
+      console.warn("Meta fetch failed:", e.message);
+    }
   }
 
+  const latestSession = db.prepare("SELECT id FROM sessions ORDER BY session_index DESC LIMIT 1").get();
   const r = db.prepare(
-    "INSERT INTO articles (url, headline, notes, article_date, source) VALUES (?, ?, ?, ?, 'Manual')"
-  ).run(url, headline, notes || "", article_date);
+    "INSERT INTO articles (url, headline, notes, article_date, source, session_id) VALUES (?, ?, ?, ?, 'Manual', ?)"
+  ).run(url, headline, notes || "", article_date, latestSession?.id ?? null);
+
+  const articleId = r.lastInsertRowid;
+  respondWithArticle(res, articleId, 201);
 
   const apiKey = req.headers["x-api-key"];
   if (apiKey) {
-    try {
-      const scores = await scoreArticlesBatch([{ id: r.lastInsertRowid, headline }], apiKey);
-      if (scores.length > 0) {
-        db.prepare("UPDATE articles SET relevance_score = ?, relevance_breakdown = ?, relevance_reason = ? WHERE id = ?")
-          .run(scores[0].score, JSON.stringify(scores[0].breakdown), scores[0].reason, r.lastInsertRowid);
-      }
-    } catch {}
+    setImmediate(async () => {
+      try {
+        const scores = await scoreArticlesBatch([{ id: articleId, headline }], apiKey);
+        if (scores.length > 0) {
+          db.prepare("UPDATE articles SET relevance_score = ?, relevance_breakdown = ?, relevance_reason = ? WHERE id = ?")
+            .run(scores[0].score, JSON.stringify(scores[0].breakdown), scores[0].reason, articleId);
+          broadcast("article-updated", parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(articleId)));
+        }
+      } catch {}
+    });
   }
-
-  respondWithArticle(res, r.lastInsertRowid, 201);
 });
 
 app.put("/api/articles/:id", (req, res) => {
@@ -271,7 +280,7 @@ Rules for TAGS: 1-3 from this preset list (or a short custom tag): ${PRESET_TAGS
       .run(JSON.stringify(bullets.length ? bullets : [text]), JSON.stringify(tags), id);
     respondWithArticle(res, id);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -363,7 +372,9 @@ app.get("/api/sessions", (req, res) => {
   const sessions = db.prepare("SELECT * FROM sessions ORDER BY session_index DESC").all();
   const counts = db.prepare("SELECT session_id, COUNT(*) as n FROM articles WHERE session_id IS NOT NULL GROUP BY session_id").all();
   const countMap = Object.fromEntries(counts.map((c) => [c.session_id, c.n]));
-  res.json(sessions.map((s) => ({ ...s, article_count: countMap[s.id] || 0 })));
+  const starredCounts = db.prepare("SELECT session_id, COUNT(*) as n FROM articles WHERE session_id IS NOT NULL AND is_starred = 1 GROUP BY session_id").all();
+  const starredMap = Object.fromEntries(starredCounts.map((c) => [c.session_id, c.n]));
+  res.json(sessions.map((s) => ({ ...s, article_count: countMap[s.id] || 0, starred_count: starredMap[s.id] || 0 })));
 });
 
 app.post("/api/sessions", (req, res) => {
