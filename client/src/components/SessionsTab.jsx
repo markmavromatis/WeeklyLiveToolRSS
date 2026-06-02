@@ -162,7 +162,7 @@ export default function SessionsTab({ apiKey, sessions, onSessionsChange }) {
                 {fmtDate(s.to_date)}
               </div>
             </div>
-            <div className="session-count">{s.article_count} articles</div>
+            <div className="session-count"># {s.article_count} · ★ {s.starred_count}</div>
             <div className="session-actions">
               <button className="btn btn-secondary btn-sm" onClick={() => viewArticles(s)}>
                 {viewingSession?.id === s.id ? "Hide Articles" : "View Articles"}
