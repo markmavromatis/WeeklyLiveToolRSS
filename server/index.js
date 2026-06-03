@@ -157,7 +157,7 @@ app.get("/api/articles", (req, res) => {
   if (unassigned === "true") { q += " AND session_id IS NULL"; }
   if (source) { q += " AND source = ?"; params.push(source); }
   if (min_score) { q += " AND relevance_score >= ?"; params.push(parseInt(min_score)); }
-  q += " ORDER BY article_date DESC, source ASC, created_at DESC";
+  q += " ORDER BY created_at DESC, source ASC, article_date DESC";
   res.json(db.prepare(q).all(...params).map(parseArticle));
 });
 
