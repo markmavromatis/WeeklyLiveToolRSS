@@ -108,6 +108,12 @@ function SourceModal({ source, onClose, onSave }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const save = async () => {
