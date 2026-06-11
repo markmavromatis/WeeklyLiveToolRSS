@@ -3,7 +3,7 @@
   "name": "Weekly Live Tool RSS",
   "version": "1.0.0",
   "description": "Add articles to Weekly Live Tool RSS from any webpage",
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "permissions": ["activeTab", "scripting", "tabs"],
   "host_permissions": ["http://localhost:*/*"],
   "action": {
     "default_popup": "popup.html",

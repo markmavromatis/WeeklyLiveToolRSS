@@ -58,6 +58,18 @@ body {
   gap: 10px;
 }
 
+/* API key banner */
+.api-key-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: #fff8e1;
+  border-bottom: 1px solid #fde68a;
+  color: #b45309;
+  font-size: 12px;
+}
+
 /* Views */
 .view {
   padding: 14px;

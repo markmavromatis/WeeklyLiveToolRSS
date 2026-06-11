@@ -7,17 +7,16 @@ let existingArticle = null;
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadSettings();
+  loadSettings();
   wireUI();
   await init();
 });
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
-async function loadSettings() {
-  const stored = await chrome.storage.local.get(['serverUrl', 'apiKey']);
-  settings.serverUrl = stored.serverUrl || DEFAULT_SERVER;
-  settings.apiKey = stored.apiKey || '';
+function loadSettings() {
+  settings.serverUrl = localStorage.getItem('serverUrl') || DEFAULT_SERVER;
+  settings.apiKey = localStorage.getItem('apiKey') || '';
   syncSettingsDisplay();
 }
 
@@ -25,6 +24,7 @@ function syncSettingsDisplay() {
   const isSet = !!settings.apiKey;
   document.getElementById('settings-compact').style.display = isSet ? 'block' : 'none';
   document.getElementById('settings-form').style.display = isSet ? 'none' : 'block';
+  document.getElementById('api-key-banner').hidden = isSet;
   if (isSet) {
     document.getElementById('server-url-text').textContent = settings.serverUrl;
     document.getElementById('inp-api-key').value = '';
@@ -56,11 +56,12 @@ function wireUI() {
     panel.hidden = !panel.hidden;
   });
 
-  document.getElementById('btn-save-settings').addEventListener('click', async () => {
+  document.getElementById('btn-save-settings').addEventListener('click', () => {
     settings.serverUrl = document.getElementById('inp-server-url').value.trim() || DEFAULT_SERVER;
     const newKey = document.getElementById('inp-api-key').value.trim();
     if (newKey) settings.apiKey = newKey;
-    await chrome.storage.local.set({ serverUrl: settings.serverUrl, apiKey: settings.apiKey });
+    localStorage.setItem('serverUrl', settings.serverUrl);
+    localStorage.setItem('apiKey', settings.apiKey);
     document.getElementById('settings-panel').hidden = true;
     syncSettingsDisplay();
     syncActionButtons();
@@ -71,6 +72,11 @@ function wireUI() {
     document.getElementById('settings-compact').style.display = 'none';
     document.getElementById('settings-form').style.display = 'block';
     document.getElementById('inp-server-url').value = settings.serverUrl;
+    document.getElementById('inp-api-key').focus();
+  });
+
+  document.getElementById('btn-banner-configure').addEventListener('click', () => {
+    document.getElementById('settings-panel').hidden = false;
     document.getElementById('inp-api-key').focus();
   });
 
@@ -141,6 +147,7 @@ async function addArticle() {
       existingArticle = body.article || body;
       document.getElementById('existing-headline').textContent = existingArticle.headline || '(no headline)';
       setView('main', 'exists');
+      syncActionButtons();
       toast('Article was already in the database', 'error');
       return;
     }
@@ -230,6 +237,7 @@ function showError(msg) {
 
 function setBusy(busy) {
   document.querySelectorAll('button').forEach(b => { b.disabled = busy; });
+  if (!busy) syncActionButtons();
 }
 
 function toast(msg, type = 'success') {
