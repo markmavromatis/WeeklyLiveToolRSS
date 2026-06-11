@@ -35,10 +35,16 @@ function syncSettingsDisplay() {
 
 function syncActionButtons() {
   const hasKey = !!settings.apiKey;
+  const alreadySummarized = !!(existingArticle && existingArticle.summary);
   const summarizeBtn = document.getElementById('btn-summarize');
+  const alreadySummarizedMsg = document.getElementById('already-summarized-msg');
   if (summarizeBtn) {
+    summarizeBtn.hidden = alreadySummarized;
     summarizeBtn.disabled = !hasKey;
     summarizeBtn.title = hasKey ? '' : 'Anthropic API key required — click ⚙ to configure';
+  }
+  if (alreadySummarizedMsg) {
+    alreadySummarizedMsg.hidden = !alreadySummarized;
   }
 }
 
