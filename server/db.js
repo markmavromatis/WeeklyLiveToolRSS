@@ -29,6 +29,13 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS rss_fetch_batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL REFERENCES rss_sources(id) ON DELETE CASCADE,
+    fetched_at TEXT DEFAULT (datetime('now')),
+    article_count INTEGER DEFAULT 0
+  );
+
   CREATE TABLE IF NOT EXISTS articles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT UNIQUE NOT NULL,
@@ -64,5 +71,6 @@ if (sourceCount === 0) {
 
 try { db.exec("ALTER TABLE articles ADD COLUMN is_read INTEGER DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE articles ADD COLUMN is_starred INTEGER DEFAULT 0"); } catch {}
+try { db.exec("ALTER TABLE articles ADD COLUMN fetch_batch_id INTEGER REFERENCES rss_fetch_batches(id) ON DELETE SET NULL"); } catch {}
 
 module.exports = db;

@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { getRssSources, createRssSource, updateRssSource, deleteRssSource, fetchRss, createSession } from "../api";
+import { useState, useEffect, useCallback } from "react";
+import { getRssSources, createRssSource, updateRssSource, deleteRssSource, fetchRss, createSession, getRssFetchBatches, getRssBatchArticles, deleteRssFetchBatch } from "../api";
 
 function fmtDate(str) {
   if (!str) return "";
@@ -156,6 +156,95 @@ function SourceModal({ source, onClose, onSave }) {
   );
 }
 
+function FetchHistory({ sourceId, onDeleted }) {
+  const [batches, setBatches] = useState(null);
+  const [expandedBatch, setExpandedBatch] = useState(null);
+  const [batchArticles, setBatchArticles] = useState({});
+  const [deleting, setDeleting] = useState(null);
+
+  const loadBatches = useCallback(() => {
+    getRssFetchBatches(sourceId).then(setBatches);
+  }, [sourceId]);
+
+  useEffect(() => { loadBatches(); }, [loadBatches]);
+
+  const toggleBatch = async (batchId) => {
+    if (expandedBatch === batchId) { setExpandedBatch(null); return; }
+    setExpandedBatch(batchId);
+    if (!batchArticles[batchId]) {
+      const arts = await getRssBatchArticles(batchId);
+      setBatchArticles((prev) => ({ ...prev, [batchId]: arts }));
+    }
+  };
+
+  const handleDelete = async (batch) => {
+    const label = fmtDateTime(batch.fetched_at);
+    if (!confirm(`Delete all ${batch.actual_count} articles from the fetch on ${label}? This cannot be undone.`)) return;
+    setDeleting(batch.id);
+    try {
+      await deleteRssFetchBatch(batch.id);
+      setBatches((prev) => prev.filter((b) => b.id !== batch.id));
+      setBatchArticles((prev) => { const next = { ...prev }; delete next[batch.id]; return next; });
+      if (expandedBatch === batch.id) setExpandedBatch(null);
+      onDeleted?.();
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  if (!batches) return <div style={{ padding: "10px 0", fontSize: 12, color: "#94a3b8" }}>Loading history…</div>;
+  if (batches.length === 0) return <div style={{ padding: "10px 0", fontSize: 12, color: "#94a3b8" }}>No fetch history yet.</div>;
+
+  return (
+    <div style={{ marginTop: 8, borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
+      {batches.map((batch, idx) => (
+        <div key={batch.id} style={{ marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => toggleBatch(batch.id)}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 11, color: "#3b82f6", textDecoration: "underline" }}
+            >
+              {fmtDateTime(batch.fetched_at)}
+            </button>
+            <span style={{ fontSize: 11, color: "#64748b" }}>
+              {batch.actual_count} article{batch.actual_count !== 1 ? "s" : ""}
+            </span>
+            {idx === 0 && <span style={{ fontSize: 10, background: "#dbeafe", color: "#1d4ed8", borderRadius: 4, padding: "1px 5px" }}>latest</span>}
+            <button
+              className="btn btn-danger btn-sm"
+              style={{ marginLeft: "auto", fontSize: 11, padding: "2px 8px" }}
+              onClick={() => handleDelete(batch)}
+              disabled={deleting === batch.id || batch.actual_count === 0}
+              title={batch.actual_count === 0 ? "No articles to delete" : "Delete articles from this fetch"}
+            >
+              {deleting === batch.id ? <span className="spinner" /> : "Delete"}
+            </button>
+          </div>
+          {expandedBatch === batch.id && (
+            <div style={{ marginTop: 4, marginLeft: 8, maxHeight: 180, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 4, background: "#f8fafc" }}>
+              {!batchArticles[batch.id]
+                ? <div style={{ padding: "6px 10px", fontSize: 11, color: "#94a3b8" }}>Loading…</div>
+                : batchArticles[batch.id].length === 0
+                  ? <div style={{ padding: "6px 10px", fontSize: 11, color: "#94a3b8" }}>No articles (may have been deleted or were duplicates).</div>
+                  : batchArticles[batch.id].map((a) => (
+                    <div key={a.id} style={{ padding: "4px 10px", borderBottom: "1px solid #f1f5f9", fontSize: 11 }}>
+                      <a href={a.url} target="_blank" rel="noreferrer" style={{ color: "#1e293b", textDecoration: "none" }}>
+                        {a.headline || a.url}
+                      </a>
+                      {a.relevance_score != null && (
+                        <span style={{ marginLeft: 6, color: "#64748b" }}>({a.relevance_score})</span>
+                      )}
+                    </div>
+                  ))
+              }
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function RssTab({ apiKey, sessions = [], onSessionsChange }) {
   const [sources, setSources] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -166,6 +255,7 @@ export default function RssTab({ apiKey, sessions = [], onSessionsChange }) {
   const [editTarget, setEditTarget] = useState(null);
   const [msg, setMsg] = useState(null);
   const [fetchResults, setFetchResults] = useState(null);
+  const [showHistory, setShowHistory] = useState({});
 
   const flash = (text, type = "success") => { setMsg({ text, type }); setTimeout(() => setMsg(null), 6000); };
 
@@ -291,37 +381,51 @@ export default function RssTab({ apiKey, sessions = [], onSessionsChange }) {
       )}
 
       {sources.map((source) => (
-        <div key={source.id} className={`rss-card${source.enabled ? "" : " disabled"}`}>
-          <div style={{ minWidth: 40 }}>
-            <button
-              className={`toggle${source.enabled ? " on" : ""}`}
-              onClick={() => handleToggle(source)}
-              title={source.enabled ? "Enabled — click to disable" : "Disabled — click to enable"}
-            />
+        <div key={source.id} style={{ marginBottom: 8 }}>
+          <div className={`rss-card${source.enabled ? "" : " disabled"}`} style={{ marginBottom: 0 }}>
+            <div style={{ minWidth: 40 }}>
+              <button
+                className={`toggle${source.enabled ? " on" : ""}`}
+                onClick={() => handleToggle(source)}
+                title={source.enabled ? "Enabled — click to disable" : "Disabled — click to enable"}
+              />
+            </div>
+
+            <div style={{ flex: 1 }}>
+              <div className="rss-name">{source.name}</div>
+              <div className="rss-url">{source.url}</div>
+            </div>
+
+            <div className="rss-meta">
+              <span>{source.article_count} articles</span>
+              <span>Last: {fmtDateTime(source.last_fetched_at)}</span>
+            </div>
+
+            <div className="rss-actions">
+              <button
+                className="btn btn-success btn-sm"
+                onClick={() => handleFetchOne(source)}
+                disabled={fetching === source.id || !source.enabled}
+                title={!source.enabled ? "Enable source to fetch" : "Fetch this feed"}
+              >
+                {fetching === source.id ? <span className="spinner" /> : "Fetch"}
+              </button>
+              <button
+                className={`btn btn-sm ${showHistory[source.id] ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setShowHistory((prev) => ({ ...prev, [source.id]: !prev[source.id] }))}
+              >
+                History
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setEditTarget(source); setShowSourceModal(true); }}>Edit</button>
+              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(source)}>Delete</button>
+            </div>
           </div>
 
-          <div style={{ flex: 1 }}>
-            <div className="rss-name">{source.name}</div>
-            <div className="rss-url">{source.url}</div>
-          </div>
-
-          <div className="rss-meta">
-            <span>{source.article_count} articles</span>
-            <span>Last: {fmtDateTime(source.last_fetched_at)}</span>
-          </div>
-
-          <div className="rss-actions">
-            <button
-              className="btn btn-success btn-sm"
-              onClick={() => handleFetchOne(source)}
-              disabled={fetching === source.id || !source.enabled}
-              title={!source.enabled ? "Enable source to fetch" : "Fetch this feed"}
-            >
-              {fetching === source.id ? <span className="spinner" /> : "Fetch"}
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={() => { setEditTarget(source); setShowSourceModal(true); }}>Edit</button>
-            <button className="btn btn-danger btn-sm" onClick={() => handleDelete(source)}>Delete</button>
-          </div>
+          {showHistory[source.id] && (
+            <div style={{ border: "1px solid #e2e8f0", borderTop: "none", borderRadius: "0 0 8px 8px", padding: "8px 16px", background: "#f8fafc" }}>
+              <FetchHistory sourceId={source.id} onDeleted={load} />
+            </div>
+          )}
         </div>
       ))}
 

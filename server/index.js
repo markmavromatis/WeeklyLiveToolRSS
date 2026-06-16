@@ -541,6 +541,37 @@ app.delete("/api/rss/sources/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/api/rss/sources/:id/batches", (req, res) => {
+  const sourceId = parseInt(req.params.id);
+  const batches = db.prepare(`
+    SELECT b.id, b.fetched_at, b.article_count,
+           COUNT(a.id) as actual_count
+    FROM rss_fetch_batches b
+    LEFT JOIN articles a ON a.fetch_batch_id = b.id
+    WHERE b.source_id = ?
+    GROUP BY b.id
+    ORDER BY b.fetched_at DESC
+  `).all(sourceId);
+  res.json(batches);
+});
+
+app.get("/api/rss/batches/:id/articles", (req, res) => {
+  const batchId = parseInt(req.params.id);
+  const articles = db.prepare(`
+    SELECT id, url, headline, article_date, relevance_score
+    FROM articles WHERE fetch_batch_id = ?
+    ORDER BY article_date DESC, id DESC
+  `).all(batchId);
+  res.json(articles);
+});
+
+app.delete("/api/rss/batches/:id", (req, res) => {
+  const batchId = parseInt(req.params.id);
+  db.prepare("DELETE FROM articles WHERE fetch_batch_id = ?").run(batchId);
+  db.prepare("DELETE FROM rss_fetch_batches WHERE id = ?").run(batchId);
+  res.json({ ok: true });
+});
+
 app.post("/api/rss/fetch", async (req, res) => {
   try {
     const apiKey = req.headers["x-api-key"];

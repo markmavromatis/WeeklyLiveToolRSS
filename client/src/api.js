@@ -90,3 +90,7 @@ export const fetchRss = (apiKey, source_id = null, session_id = null) =>
       ...(session_id ? { session_id } : {}),
     }),
   });
+export const getRssFetchBatches = (sourceId) => base(`/api/rss/sources/${sourceId}/batches`);
+export const getRssBatchArticles = (batchId) => base(`/api/rss/batches/${batchId}/articles`);
+export const deleteRssFetchBatch = (batchId) =>
+  fetch(`/api/rss/batches/${batchId}`, { method: "DELETE" }).then((r) => r.json());

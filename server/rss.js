@@ -49,9 +49,13 @@ function extractTechmemeSourceUrl(content) {
 
 async function insertFromFeed(source) {
   const feed = await parser.parseURL(source.url);
+
+  const batchResult = db.prepare("INSERT INTO rss_fetch_batches (source_id) VALUES (?)").run(source.id);
+  const batchId = batchResult.lastInsertRowid;
+
   const insertArticle = db.prepare(`
-    INSERT OR IGNORE INTO articles (url, headline, article_date, source, rss_source_id)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO articles (url, headline, article_date, source, rss_source_id, fetch_batch_id)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   // When a primary source sees a URL already attributed to Techmeme, re-attribute it.
   const claimFromTechmeme = source.name !== "Techmeme"
@@ -70,7 +74,7 @@ async function insertFromFeed(source) {
     const date = item.pubDate
       ? new Date(item.pubDate).toISOString().slice(0, 10)
       : new Date().toISOString().slice(0, 10);
-    const r = insertArticle.run(url, item.title || url, date, source.name, source.id);
+    const r = insertArticle.run(url, item.title || url, date, source.name, source.id, batchId);
     if (r.changes > 0) {
       newArticles.push({ id: r.lastInsertRowid, headline: item.title || item.link });
     } else if (claimFromTechmeme) {
@@ -78,8 +82,9 @@ async function insertFromFeed(source) {
     }
   }
 
+  db.prepare("UPDATE rss_fetch_batches SET article_count = ? WHERE id = ?").run(newArticles.length, batchId);
   db.prepare("UPDATE rss_sources SET last_fetched_at = datetime('now') WHERE id = ?").run(source.id);
-  return newArticles;
+  return { newArticles, batchId };
 }
 
 async function translateHeadlinesBatch(articles, apiKey) {
@@ -109,7 +114,7 @@ async function fetchAllSources(apiKey, sourceId = null, sessionId = null) {
 
   for (const source of sources) {
     try {
-      const newArticles = await insertFromFeed(source);
+      const { newArticles } = await insertFromFeed(source);
       results.push({ id: source.id, name: source.name, inserted: newArticles.length, error: null });
       allNewArticles.push(...newArticles);
     } catch (err) {
