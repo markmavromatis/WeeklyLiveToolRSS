@@ -183,7 +183,7 @@ app.post("/api/articles", async (req, res) => {
 
   const latestSession = db.prepare("SELECT id FROM sessions ORDER BY session_index DESC LIMIT 1").get();
   const r = db.prepare(
-    "INSERT INTO articles (url, headline, notes, article_date, source, session_id) VALUES (?, ?, ?, ?, 'Manual', ?)"
+    "INSERT INTO articles (url, headline, notes, article_date, source, session_id, is_read) VALUES (?, ?, ?, ?, 'Manual', ?, 1)"
   ).run(url, headline, notes || "", article_date, latestSession?.id ?? null);
 
   const articleId = r.lastInsertRowid;
