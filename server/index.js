@@ -597,11 +597,11 @@ app.post("/api/rss/fetch", async (req, res) => {
   }
 });
 
-// POST export articles to Slack as sequential messages
+// POST a single message to Slack via webhook proxy
 app.post("/api/slack/export", async (req, res) => {
-  const { webhookUrl, messages } = req.body;
+  const { webhookUrl, message } = req.body;
   if (!webhookUrl) return res.status(400).json({ error: "webhookUrl is required" });
-  if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json({ error: "messages array is required" });
+  if (!message) return res.status(400).json({ error: "message is required" });
 
   let parsed;
   try {
@@ -611,16 +611,16 @@ app.post("/api/slack/export", async (req, res) => {
   }
 
   const lib = parsed.protocol === "https:" ? https : http;
+  const payload = JSON.stringify({ text: message });
+  const options = {
+    hostname: parsed.hostname,
+    path: parsed.pathname + parsed.search,
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
+  };
 
-  function postMessage(text) {
-    return new Promise((resolve, reject) => {
-      const payload = JSON.stringify({ text });
-      const options = {
-        hostname: parsed.hostname,
-        path: parsed.pathname + parsed.search,
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
-      };
+  try {
+    await new Promise((resolve, reject) => {
       const slackReq = lib.request(options, (proxyRes) => {
         let data = "";
         proxyRes.on("data", (chunk) => { data += chunk; });
@@ -633,14 +633,7 @@ app.post("/api/slack/export", async (req, res) => {
       slackReq.write(payload);
       slackReq.end();
     });
-  }
-
-  try {
-    for (let i = 0; i < messages.length; i++) {
-      await postMessage(messages[i]);
-      if (i < messages.length - 1) await new Promise((r) => setTimeout(r, 1000));
-    }
-    res.json({ ok: true, sent: messages.length });
+    res.json({ ok: true });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
