@@ -162,7 +162,7 @@ async function fetchAllSources(apiKey, sourceId = null, sessionId = null) {
 }
 
 async function scoreUnscoredArticles(apiKey) {
-  const unscored = db.prepare("SELECT id, headline FROM articles WHERE relevance_score IS NULL").all();
+  const unscored = db.prepare("SELECT id, headline FROM articles WHERE relevance_score IS NULL AND is_deleted != 1").all();
   if (unscored.length === 0) return 0;
 
   const updateScore = db.prepare(`

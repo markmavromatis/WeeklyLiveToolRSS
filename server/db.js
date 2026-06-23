@@ -72,5 +72,6 @@ if (sourceCount === 0) {
 try { db.exec("ALTER TABLE articles ADD COLUMN is_read INTEGER DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE articles ADD COLUMN is_starred INTEGER DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE articles ADD COLUMN fetch_batch_id INTEGER REFERENCES rss_fetch_batches(id) ON DELETE SET NULL"); } catch {}
+try { db.exec("ALTER TABLE articles ADD COLUMN is_deleted INTEGER DEFAULT 0"); } catch {}
 
 module.exports = db;

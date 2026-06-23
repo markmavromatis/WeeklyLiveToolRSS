@@ -151,7 +151,7 @@ app.get("/api/events", (req, res) => {
 
 app.get("/api/articles", (req, res) => {
   const { session_id, unassigned, source, min_score } = req.query;
-  let q = "SELECT * FROM articles WHERE 1=1";
+  let q = "SELECT * FROM articles WHERE is_deleted != 1";
   const params = [];
   if (session_id) { q += " AND session_id = ?"; params.push(parseInt(session_id)); }
   if (unassigned === "true") { q += " AND session_id IS NULL"; }
@@ -228,7 +228,7 @@ app.put("/api/articles/:id/tags", (req, res) => {
 });
 
 app.delete("/api/articles/:id", (req, res) => {
-  db.prepare("DELETE FROM articles WHERE id = ?").run(parseInt(req.params.id));
+  db.prepare("UPDATE articles SET is_deleted = 1 WHERE id = ?").run(parseInt(req.params.id));
   res.json({ ok: true });
 });
 
@@ -334,7 +334,7 @@ app.post("/api/articles/score-unscored", async (req, res) => {
 });
 
 app.get("/api/articles/unscored-count", (req, res) => {
-  const count = db.prepare("SELECT COUNT(*) as n FROM articles WHERE relevance_score IS NULL").get().n;
+  const count = db.prepare("SELECT COUNT(*) as n FROM articles WHERE relevance_score IS NULL AND is_deleted != 1").get().n;
   res.json({ count });
 });
 
@@ -370,9 +370,9 @@ app.post("/api/translate-headlines", async (req, res) => {
 
 app.get("/api/sessions", (req, res) => {
   const sessions = db.prepare("SELECT * FROM sessions ORDER BY session_index DESC").all();
-  const counts = db.prepare("SELECT session_id, COUNT(*) as n FROM articles WHERE session_id IS NOT NULL GROUP BY session_id").all();
+  const counts = db.prepare("SELECT session_id, COUNT(*) as n FROM articles WHERE session_id IS NOT NULL AND is_deleted != 1 GROUP BY session_id").all();
   const countMap = Object.fromEntries(counts.map((c) => [c.session_id, c.n]));
-  const starredCounts = db.prepare("SELECT session_id, COUNT(*) as n FROM articles WHERE session_id IS NOT NULL AND is_starred = 1 GROUP BY session_id").all();
+  const starredCounts = db.prepare("SELECT session_id, COUNT(*) as n FROM articles WHERE session_id IS NOT NULL AND is_starred = 1 AND is_deleted != 1 GROUP BY session_id").all();
   const starredMap = Object.fromEntries(starredCounts.map((c) => [c.session_id, c.n]));
   res.json(sessions.map((s) => ({ ...s, article_count: countMap[s.id] || 0, starred_count: starredMap[s.id] || 0 })));
 });
@@ -426,7 +426,7 @@ app.post("/api/sessions/:id/export-pptx", async (req, res) => {
 
   try {
     const sessionArticles = db.prepare(
-      "SELECT * FROM articles WHERE session_id = ? AND is_starred = 1 ORDER BY article_date DESC, headline ASC"
+      "SELECT * FROM articles WHERE session_id = ? AND is_starred = 1 AND is_deleted != 1 ORDER BY article_date DESC, headline ASC"
     ).all(sessionId);
 
     const headlineMap = Object.fromEntries(sessionArticles.map((a) => [a.id, a.headline_jp || ""]));
@@ -559,7 +559,7 @@ app.get("/api/rss/batches/:id/articles", (req, res) => {
   const batchId = parseInt(req.params.id);
   const articles = db.prepare(`
     SELECT id, url, headline, article_date, relevance_score
-    FROM articles WHERE fetch_batch_id = ?
+    FROM articles WHERE fetch_batch_id = ? AND is_deleted != 1
     ORDER BY article_date DESC, id DESC
   `).all(batchId);
   res.json(articles);
