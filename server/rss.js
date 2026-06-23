@@ -112,32 +112,33 @@ async function fetchAllSources(apiKey, sourceId = null, sessionId = null) {
   const results = [];
   const allNewArticles = [];
 
+  const updateScore = db.prepare(`
+    UPDATE articles SET relevance_score = ?, relevance_breakdown = ?, relevance_reason = ?
+    WHERE id = ?
+  `);
+
   for (const source of sources) {
     try {
       const { newArticles } = await insertFromFeed(source);
       results.push({ id: source.id, name: source.name, inserted: newArticles.length, error: null });
       allNewArticles.push(...newArticles);
+
+      if (apiKey && newArticles.length > 0) {
+        for (let i = 0; i < newArticles.length; i += BATCH_SIZE) {
+          const batch = newArticles.slice(i, i + BATCH_SIZE);
+          try {
+            const scores = await scoreArticlesBatch(batch, apiKey);
+            for (const s of scores) {
+              const article = batch[s.num - 1];
+              if (article) updateScore.run(s.score, JSON.stringify(s.breakdown), s.reason, article.id);
+            }
+          } catch (e) {
+            console.warn("Batch scoring failed:", e.message);
+          }
+        }
+      }
     } catch (err) {
       results.push({ id: source.id, name: source.name, inserted: 0, error: err.message });
-    }
-  }
-
-  if (apiKey && allNewArticles.length > 0) {
-    const updateScore = db.prepare(`
-      UPDATE articles SET relevance_score = ?, relevance_breakdown = ?, relevance_reason = ?
-      WHERE id = ?
-    `);
-    for (let i = 0; i < allNewArticles.length; i += BATCH_SIZE) {
-      const batch = allNewArticles.slice(i, i + BATCH_SIZE);
-      try {
-        const scores = await scoreArticlesBatch(batch, apiKey);
-        for (const s of scores) {
-          const article = batch[s.num - 1];
-          if (article) updateScore.run(s.score, JSON.stringify(s.breakdown), s.reason, article.id);
-        }
-      } catch (e) {
-        console.warn("Batch scoring failed:", e.message);
-      }
     }
   }
 
