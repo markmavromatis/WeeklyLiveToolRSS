@@ -296,8 +296,11 @@ function SlackExportModal({ articles, onClose, slackWebhookUrl, onNeedWebhook, o
 
     setPosting(true);
     try {
-      const result = await exportToSlack({ webhookUrl: slackWebhookUrl, messages });
-      if (result.error) throw new Error(result.error);
+      for (let i = 0; i < messages.length; i++) {
+        const result = await exportToSlack({ webhookUrl: slackWebhookUrl, message: messages[i] });
+        if (result.error) throw new Error(result.error);
+        if (i < messages.length - 1) await new Promise((r) => setTimeout(r, 1000));
+      }
       onFlash(`Posted ${messages.length} message${messages.length !== 1 ? "s" : ""} to Slack.`);
       onClose();
     } catch (err) {
