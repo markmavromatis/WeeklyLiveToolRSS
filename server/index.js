@@ -232,23 +232,16 @@ app.delete("/api/articles/:id", (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/articles/:id/summary", async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const article = db.prepare("SELECT * FROM articles WHERE id = ?").get(id);
-    if (!article) return res.status(404).json({ error: "Not found" });
-    const apiKey = req.headers["x-api-key"];
-    if (!apiKey) return res.status(400).json({ error: "Missing x-api-key header" });
-    const bodyText = (req.body?.articleText || "").trim();
-    const client = new Anthropic({ apiKey });
-    const PRESET_TAGS = ["AdTech","AI","Enterprise","Mobility","Robotics","Semiconductors","Streaming","Social Media","Sustainability","Telecom","Electrification","SaaS"];
+const PRESET_TAGS = ["AdTech","AI","Enterprise","Mobility","Robotics","Semiconductors","Streaming","Social Media","Sustainability","Telecom","Electrification","SaaS"];
 
-    const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
-      messages: [{
-        role: "user",
-        content: `You are a research assistant for a Japanese telecom company's Silicon Valley team producing a weekly US Tech & News livestream.
+async function generateSummary(article, apiKey, bodyText = "") {
+  const client = new Anthropic({ apiKey });
+  const message = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 1024,
+    messages: [{
+      role: "user",
+      content: `You are a research assistant for a Japanese telecom company's Silicon Valley team producing a weekly US Tech & News livestream.
 
 Headline: "${article.headline}"
 ${article.notes ? `Reporter notes: ${article.notes}\n` : ""}Article text:
@@ -267,17 +260,25 @@ TAGS: <comma-separated tags>
 
 Rules for BULLETS (4-5 total, each a clear sentence): core news, why it matters, telecom/AI/enterprise relevance, key companies/figures involved.
 Rules for TAGS: 1-3 from this preset list (or a short custom tag): ${PRESET_TAGS.join(", ")}`,
-      }],
-    });
+    }],
+  });
+  const text = message.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+  const bulletsBlock = text.match(/BULLETS:\s*([\s\S]*?)(?=\nTAGS:|$)/i)?.[1] || text;
+  const bullets = bulletsBlock.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("- ")).map((l) => l.slice(2).trim());
+  const tagsMatch = text.match(/TAGS:\s*(.+)/i);
+  const tags = tagsMatch ? tagsMatch[1].split(",").map((t) => t.trim()).filter(Boolean) : [];
+  db.prepare("UPDATE articles SET summary = ?, tags = ? WHERE id = ?")
+    .run(JSON.stringify(bullets.length ? bullets : [text]), JSON.stringify(tags), article.id);
+}
 
-    const text = message.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    const bulletsBlock = text.match(/BULLETS:\s*([\s\S]*?)(?=\nTAGS:|$)/i)?.[1] || text;
-    const bullets = bulletsBlock.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("- ")).map((l) => l.slice(2).trim());
-    const tagsMatch = text.match(/TAGS:\s*(.+)/i);
-    const tags = tagsMatch ? tagsMatch[1].split(",").map((t) => t.trim()).filter(Boolean) : [];
-
-    db.prepare("UPDATE articles SET summary = ?, tags = ? WHERE id = ?")
-      .run(JSON.stringify(bullets.length ? bullets : [text]), JSON.stringify(tags), id);
+app.post("/api/articles/:id/summary", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const article = db.prepare("SELECT * FROM articles WHERE id = ?").get(id);
+    if (!article) return res.status(404).json({ error: "Not found" });
+    const apiKey = req.headers["x-api-key"];
+    if (!apiKey) return res.status(400).json({ error: "Missing x-api-key header" });
+    await generateSummary(article, apiKey, (req.body?.articleText || "").trim());
     respondWithArticle(res, id);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -310,10 +311,23 @@ app.post("/api/articles/:id/score", async (req, res) => {
 
 app.put("/api/articles/:id/star", (req, res) => {
   const id = parseInt(req.params.id);
-  const article = db.prepare("SELECT is_starred FROM articles WHERE id = ?").get(id);
+  const article = db.prepare("SELECT * FROM articles WHERE id = ?").get(id);
   if (!article) return res.status(404).json({ error: "Not found" });
-  db.prepare("UPDATE articles SET is_starred = ? WHERE id = ?").run(article.is_starred ? 0 : 1, id);
+  const newStarred = article.is_starred ? 0 : 1;
+  db.prepare("UPDATE articles SET is_starred = ? WHERE id = ?").run(newStarred, id);
   respondWithArticle(res, id);
+
+  const apiKey = req.headers["x-api-key"];
+  if (newStarred && apiKey && !article.summary) {
+    setImmediate(async () => {
+      try {
+        await generateSummary(article, apiKey);
+        broadcast("article-updated", parseArticle(db.prepare("SELECT * FROM articles WHERE id = ?").get(id)));
+      } catch (e) {
+        console.warn("Auto-summary failed:", e.message);
+      }
+    });
+  }
 });
 
 app.put("/api/articles/:id/read", (req, res) => {

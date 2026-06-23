@@ -182,7 +182,7 @@ function ArticleRow({ article, sessions, apiKey, onUpdate, onDelete, showJapanes
           <button
             className={`btn btn-sm star-btn${article.is_starred ? " starred" : ""}`}
             title={article.is_starred ? "Unstar" : "Star"}
-            onClick={() => toggleArticleStar(article.id).then(onUpdate)}
+            onClick={() => toggleArticleStar(article.id, apiKey).then(onUpdate)}
           >
             {article.is_starred ? "★" : "☆"}
           </button>
