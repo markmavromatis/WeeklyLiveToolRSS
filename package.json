@@ -9,7 +9,7 @@
     "client": "cd client && npm run dev"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.105.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "pptxgenjs": "^4.0.1",

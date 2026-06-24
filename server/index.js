@@ -237,7 +237,7 @@ const PRESET_TAGS = ["AdTech","AI","Enterprise","Mobility","Robotics","Semicondu
 async function generateSummary(article, apiKey, bodyText = "") {
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: "claude-sonnet-4-6",
     max_tokens: 1024,
     messages: [{
       role: "user",
@@ -299,10 +299,9 @@ app.post("/api/articles/:id/score", async (req, res) => {
     const apiKey = req.headers["x-api-key"];
     if (!apiKey) return res.status(400).json({ error: "Missing x-api-key header" });
     const scores = await scoreArticlesBatch([{ id, headline: article.headline }], apiKey);
-    if (scores.length > 0) {
-      db.prepare("UPDATE articles SET relevance_score = ?, relevance_breakdown = ?, relevance_reason = ? WHERE id = ?")
-        .run(scores[0].score, JSON.stringify(scores[0].breakdown), scores[0].reason, id);
-    }
+    if (scores.length === 0) return res.status(500).json({ error: "Scoring returned no result — Claude may have returned an unexpected format." });
+    db.prepare("UPDATE articles SET relevance_score = ?, relevance_breakdown = ?, relevance_reason = ? WHERE id = ?")
+      .run(scores[0].score, JSON.stringify(scores[0].breakdown), scores[0].reason, id);
     respondWithArticle(res, id);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -340,8 +339,8 @@ app.post("/api/articles/score-unscored", async (req, res) => {
   try {
     const apiKey = req.headers["x-api-key"];
     if (!apiKey) return res.status(400).json({ error: "Missing x-api-key header" });
-    const scored = await scoreUnscoredArticles(apiKey);
-    res.json({ scored });
+    const { scored, error } = await scoreUnscoredArticles(apiKey);
+    res.json({ scored, error });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -362,7 +361,7 @@ app.post("/api/translate-headlines", async (req, res) => {
     const client = new Anthropic({ apiKey });
     const numbered = headlines.map((h, i) => `${i + 1}. ${h.headline}`).join("\n");
     const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-6",
       max_tokens: 2048,
       messages: [{ role: "user", content: `Translate to Japanese. Return only numbered translations:\n\n${numbered}` }],
     });
@@ -450,7 +449,7 @@ app.post("/api/sessions/:id/export-pptx", async (req, res) => {
         const client = new Anthropic({ apiKey });
         const numbered = needsTranslation.map((a, i) => `${i + 1}. ${a.headline}`).join("\n");
         const msg = await client.messages.create({
-          model: "claude-haiku-4-5-20251001",
+          model: "claude-sonnet-4-6",
           max_tokens: 2048,
           messages: [{ role: "user", content: `Translate to Japanese. Return only numbered translations:\n\n${numbered}` }],
         });
@@ -593,7 +592,7 @@ app.post("/api/rss/fetch", async (req, res) => {
     const result = await fetchAllSources(apiKey, source_id || null, session_id || null);
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: err.message });
   }
 });
 

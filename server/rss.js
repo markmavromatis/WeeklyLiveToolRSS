@@ -26,19 +26,15 @@ Return ONLY a JSON array, one object per article, in this exact shape:
 [{"num":1,"score":75,"breakdown":{"AI":80,"SaaS":20,"Mobility":10,"Sustainability":40,"Electrification":30,"Telecom":60},"reason":"brief one-sentence reason"}, ...]`;
 
   const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: "claude-sonnet-4-6",
     max_tokens: 4096,
     messages: [{ role: "user", content: prompt }],
   });
 
   const text = message.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
   const match = text.match(/\[[\s\S]*\]/);
-  if (!match) return [];
-  try {
-    return JSON.parse(match[0]);
-  } catch {
-    return [];
-  }
+  if (!match) throw new Error(`Scoring response contained no JSON array. Preview: ${text.slice(0, 300)}`);
+  return JSON.parse(match[0]);
 }
 
 function extractTechmemeSourceUrl(content) {
@@ -92,16 +88,18 @@ async function translateHeadlinesBatch(articles, apiKey) {
   const client = new Anthropic({ apiKey });
   const numbered = articles.map((a, i) => `${i + 1}. ${a.headline}`).join("\n");
   const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: "claude-sonnet-4-6",
     max_tokens: 4096,
     messages: [{ role: "user", content: `Translate to Japanese. Return only numbered translations:\n\n${numbered}` }],
   });
   const text = message.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
   const update = db.prepare("UPDATE articles SET headline_jp = ? WHERE id = ?");
+  let updated = 0;
   text.split("\n").map((l) => l.trim()).filter(Boolean).forEach((line, i) => {
     const m = line.match(/^\d+[\.\)]\s*(.+)/);
-    if (m && i < articles.length) update.run(m[1].trim(), articles[i].id);
+    if (m && i < articles.length) { update.run(m[1].trim(), articles[i].id); updated++; }
   });
+  if (updated === 0) throw new Error(`Translation response matched no numbered lines. Preview: ${text.slice(0, 300)}`);
 }
 
 async function fetchAllSources(apiKey, sourceId = null, sessionId = null) {
@@ -111,6 +109,8 @@ async function fetchAllSources(apiKey, sourceId = null, sessionId = null) {
 
   const results = [];
   const allNewArticles = [];
+  const allNewArticleIds = [];
+  const allBatchIds = [];
 
   const updateScore = db.prepare(`
     UPDATE articles SET relevance_score = ?, relevance_breakdown = ?, relevance_reason = ?
@@ -118,10 +118,13 @@ async function fetchAllSources(apiKey, sourceId = null, sessionId = null) {
   `);
 
   for (const source of sources) {
+    const sourceResult = { id: source.id, name: source.name, inserted: 0, error: null, scoringError: null };
     try {
-      const { newArticles } = await insertFromFeed(source);
-      results.push({ id: source.id, name: source.name, inserted: newArticles.length, error: null });
+      const { newArticles, batchId } = await insertFromFeed(source);
+      sourceResult.inserted = newArticles.length;
       allNewArticles.push(...newArticles);
+      allNewArticleIds.push(...newArticles.map((a) => a.id));
+      allBatchIds.push(batchId);
 
       if (apiKey && newArticles.length > 0) {
         for (let i = 0; i < newArticles.length; i += BATCH_SIZE) {
@@ -133,24 +136,41 @@ async function fetchAllSources(apiKey, sourceId = null, sessionId = null) {
               if (article) updateScore.run(s.score, JSON.stringify(s.breakdown), s.reason, article.id);
             }
           } catch (e) {
+            sourceResult.scoringError = e.message;
             console.warn("Batch scoring failed:", e.message);
           }
         }
       }
     } catch (err) {
-      results.push({ id: source.id, name: source.name, inserted: 0, error: err.message });
+      sourceResult.error = err.message;
     }
+    results.push(sourceResult);
   }
 
-  if (apiKey && allNewArticles.length > 0) {
+  const anyScoringError = results.some((r) => r.scoringError);
+
+  // Skip translation if scoring already failed — API is likely unavailable.
+  let translationError = null;
+  if (!anyScoringError && apiKey && allNewArticles.length > 0) {
     for (let i = 0; i < allNewArticles.length; i += BATCH_SIZE) {
       const batch = allNewArticles.slice(i, i + BATCH_SIZE);
       try {
         await translateHeadlinesBatch(batch, apiKey);
       } catch (e) {
+        translationError = e.message;
         console.warn("Batch translation failed:", e.message);
       }
     }
+  }
+
+  // Roll back all newly inserted articles if any Claude API call failed.
+  if (anyScoringError || translationError) {
+    const delArticle = db.prepare("DELETE FROM articles WHERE id = ?");
+    const delBatch = db.prepare("DELETE FROM rss_fetch_batches WHERE id = ?");
+    for (const id of allNewArticleIds) delArticle.run(id);
+    for (const id of allBatchIds) delBatch.run(id);
+    for (const r of results) { if (!r.error) r.inserted = 0; }
+    return { results, totalInserted: 0, translationError };
   }
 
   if (sessionId && allNewArticles.length > 0) {
@@ -158,7 +178,7 @@ async function fetchAllSources(apiKey, sourceId = null, sessionId = null) {
     for (const a of allNewArticles) assign.run(sessionId, a.id);
   }
 
-  return { results, totalInserted: allNewArticles.length };
+  return { results, totalInserted: allNewArticles.length, translationError: null };
 }
 
 async function scoreUnscoredArticles(apiKey) {
@@ -171,6 +191,7 @@ async function scoreUnscoredArticles(apiKey) {
   `);
 
   let scored = 0;
+  let scoringError = null;
   for (let i = 0; i < unscored.length; i += BATCH_SIZE) {
     const batch = unscored.slice(i, i + BATCH_SIZE);
     try {
@@ -183,10 +204,11 @@ async function scoreUnscoredArticles(apiKey) {
         }
       }
     } catch (e) {
+      scoringError = e.message;
       console.warn("Score batch failed:", e.message);
     }
   }
-  return scored;
+  return { scored, error: scoringError };
 }
 
 module.exports = { fetchAllSources, scoreArticlesBatch, scoreUnscoredArticles };

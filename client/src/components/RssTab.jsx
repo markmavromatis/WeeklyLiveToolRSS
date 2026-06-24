@@ -280,15 +280,22 @@ export default function RssTab({ apiKey, sessions = [], onSessionsChange }) {
   const handleFetchOne = async (source) => {
     if (!apiKey) { flash("API key required for AI scoring.", "error"); return; }
     setFetching(source.id);
+    setFetchResults(null);
     try {
       const result = await fetchRss(apiKey, source.id);
+      if (result.error) { flash(`${source.name}: ${result.error}`, "error"); setFetchResults(result); return; }
+      setFetchResults(result);
       const r = result.results?.[0];
       if (r?.error) {
         flash(`${source.name}: ${r.error}`, "error");
+      } else if (r?.scoringError) {
+        flash(`${source.name}: No articles loaded — scoring failed: ${r.scoringError}`, "error");
+      } else if (result.translationError) {
+        flash(`${source.name}: No articles loaded — translation failed: ${result.translationError}`, "error");
       } else {
         flash(`${source.name}: ${r?.inserted ?? 0} new articles added.`);
+        load();
       }
-      load();
     } catch (e) {
       flash(e.message, "error");
     } finally {
@@ -311,15 +318,23 @@ export default function RssTab({ apiKey, sessions = [], onSessionsChange }) {
       }
 
       const result = await fetchRss(apiKey, null, targetSessionId);
+      if (result.error) { flash(`Fetch failed: ${result.error}`, "error"); return; }
       setFetchResults(result);
       const total = result.totalInserted || 0;
       const errors = result.results?.filter((r) => r.error) || [];
-      if (errors.length > 0) {
-        flash(`${total} articles added. ${errors.length} source(s) had errors.`, "error");
+      const scoringErrors = result.results?.filter((r) => r.scoringError) || [];
+      if (scoringErrors.length > 0 || result.translationError) {
+        const reason = scoringErrors.length > 0
+          ? `scoring failed: ${scoringErrors[0].scoringError}`
+          : `translation failed: ${result.translationError}`;
+        flash(`No articles loaded — ${reason}.`, "error");
+      } else if (errors.length > 0) {
+        flash(`${total} articles added. ${errors.length} source(s) had fetch errors.`, "error");
+        load();
       } else {
         flash(`${total} new articles added, scored, and assigned to session.`);
+        load();
       }
-      load();
     } catch (e) {
       flash(e.message, "error");
     } finally {
@@ -363,10 +378,22 @@ export default function RssTab({ apiKey, sessions = [], onSessionsChange }) {
                 <span>{r.name}</span>
                 {r.error
                   ? <span style={{ color: "#dc2626" }}>Error: {r.error}</span>
-                  : <span><span>{r.inserted}</span> new articles</span>
+                  : r.scoringError
+                    ? <span style={{ color: "#dc2626" }}>Not loaded — scoring failed: {r.scoringError}</span>
+                    : <span>{r.inserted} new articles</span>
                 }
               </div>
             ))}
+            {fetchResults.translationError && (
+              <div className="fetch-result" style={{ color: "#dc2626", marginTop: 4 }}>
+                Translation failed: {fetchResults.translationError}
+              </div>
+            )}
+            {fetchResults.error && (
+              <div className="fetch-result" style={{ color: "#dc2626", marginTop: 4 }}>
+                Error: {fetchResults.error}
+              </div>
+            )}
             <div className="fetch-result" style={{ marginTop: 4 }}>
               Total: <span>{fetchResults.totalInserted}</span> new articles
             </div>

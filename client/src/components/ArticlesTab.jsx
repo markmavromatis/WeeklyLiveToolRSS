@@ -84,6 +84,7 @@ function ArticleRow({ article, sessions, apiKey, onUpdate, onDelete, showJapanes
     setScoreLoading(true);
     try {
       const updated = await scoreArticle(article.id, apiKey);
+      if (updated.error) { flash(updated.error, "error"); return; }
       onUpdate(updated);
     } catch (e) { flash(e.message, "error"); }
     finally { setScoreLoading(false); }
@@ -487,8 +488,12 @@ export default function ArticlesTab({ apiKey, sessions }) {
     if (unscored === 0) { flash("All articles are already scored."); return; }
     setScoringAll(true);
     try {
-      const { scored } = await scoreUnscored(apiKey);
-      flash(`Scored ${scored} articles.`);
+      const { scored, error } = await scoreUnscored(apiKey);
+      if (error) {
+        flash(`Scored ${scored} article${scored !== 1 ? "s" : ""}, but scoring failed: ${error}`, "error");
+      } else {
+        flash(`Scored ${scored} article${scored !== 1 ? "s" : ""}.`);
+      }
       await load();
     } catch (e) {
       flash(e.message, "error");
