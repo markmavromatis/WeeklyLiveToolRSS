@@ -8,7 +8,8 @@ function fmtDate(str) {
 
 function fmtDateTime(str) {
   if (!str) return "Never";
-  return new Date(str).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const utc = str.includes("T") || str.endsWith("Z") ? str : str.replace(" ", "T") + "Z";
+  return new Date(utc).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function getNextFriday() {
