@@ -10,6 +10,16 @@ const parser = new Parser({
 
 const BATCH_SIZE = 50;
 
+function decodeEntities(str) {
+  if (!str) return str;
+  return str
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#039;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&nbsp;/g, " ");
+}
+
 async function scoreArticlesBatch(articles, apiKey) {
   if (!apiKey || articles.length === 0) return [];
 
@@ -83,9 +93,10 @@ async function insertFromFeed(source) {
     const date = item.pubDate
       ? new Date(item.pubDate).toISOString().slice(0, 10)
       : new Date().toISOString().slice(0, 10);
-    const r = insertArticle.run(url, item.title || url, date, source.name, source.id, batchId);
+    const headline = decodeEntities(item.title) || url;
+    const r = insertArticle.run(url, headline, date, source.name, source.id, batchId);
     if (r.changes > 0) {
-      newArticles.push({ id: r.lastInsertRowid, headline: item.title || item.link });
+      newArticles.push({ id: r.lastInsertRowid, headline });
     } else if (claimFromTechmeme) {
       claimFromTechmeme.run(source.name, source.id, url);
     }
