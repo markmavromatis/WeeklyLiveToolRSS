@@ -34,7 +34,20 @@ Return ONLY a JSON array, one object per article, in this exact shape:
   const text = message.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) throw new Error(`Scoring response contained no JSON array. Preview: ${text.slice(0, 300)}`);
-  return JSON.parse(match[0]);
+  try {
+    return JSON.parse(match[0]);
+  } catch {
+    // Malformed JSON (e.g. unescaped quotes in a reason field) — recover num+score via regex
+    const recovered = [];
+    for (const m of text.matchAll(/"num"\s*:\s*(\d+)[\s\S]*?"score"\s*:\s*(\d+)/g)) {
+      recovered.push({ num: parseInt(m[1]), score: parseInt(m[2]), breakdown: {}, reason: "" });
+    }
+    if (recovered.length > 0) {
+      console.warn(`Scoring JSON was malformed; recovered ${recovered.length} scores without breakdown/reason`);
+      return recovered;
+    }
+    throw new Error(`Failed to parse scoring response at position ${text.indexOf(match[0])}. Preview: ${match[0].slice(0, 300)}`);
+  }
 }
 
 function extractTechmemeSourceUrl(content) {
